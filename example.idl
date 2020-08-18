@@ -1,0 +1,15 @@
+
+const string topic_one_name = "topic_one";
+const string topic_two_name = "topic_two";
+
+struct type_one {
+    long id; //@key
+    string<128> msg;
+};
+
+struct type_two {
+    long id; //@key
+    long x;
+    long y;
+    long z;
+};
