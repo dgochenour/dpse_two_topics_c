@@ -16,8 +16,10 @@
 #include "examplePlugin.h"
 #include "exampleSupport.h"
 
-// DPSE Discovery-related constants defined in this header
+// DPSE Discovery-related constants and user-specific constants aredefined 
+// in these headers
 #include "discovery_constants.h"
+#include "user_config.h"
 
 void take_the_data(DDS_DataReader * reader)
 {
@@ -39,21 +41,19 @@ void take_the_data(DDS_DataReader * reader)
         printf("ERROR: failed to take data, retcode = %d\n", retcode);
     }
 
-    // print each valid sample taken
-    DDS_Long i;
-    for (i = 0; i < type_twoSeq_get_length(&sample_seq); ++i) {
+    for (int i = 0; i < type_twoSeq_get_length(&sample_seq); ++i) {
         struct DDS_SampleInfo *sample_info = 
                 DDS_SampleInfoSeq_get_reference(&info_seq, i);
         if (sample_info->valid_data) {
             type_two *sample = type_twoSeq_get_reference(&sample_seq, i);
 
-            printf("\nValid sample received\n");
+            printf("\nINFO: Valid sample received\n");
             printf("\tsample id = %d\n", sample->id);
             printf("\tsample x = %d\n", sample->x);
             printf("\tsample y = %d\n", sample->y);
             printf("\tsample z = %d\n", sample->z);
         } else {
-            printf("\nSample received\n\tINVALID DATA\n");
+            printf("\nINFO: Sample received\n\tINVALID DATA\n");
         }
     }
 
@@ -64,44 +64,13 @@ void take_the_data(DDS_DataReader * reader)
 
 int main(void)
 {
-    // user-configurable values
-    char *peer = "127.0.0.1";
-    char *loopback_name = "Loopback Pseudo-Interface 1";
-    char *eth_nic_name = "Wireless LAN adapter Wi-Fi";
-    int domain_id = 100;
-
-    DDS_DomainParticipantFactory *dpf = NULL;
-    struct DDS_DomainParticipantFactoryQos dpf_qos = 
-            DDS_DomainParticipantFactoryQos_INITIALIZER;
-    DDS_DomainParticipant *dp = NULL;
-    struct DDS_DomainParticipantQos dp_qos = 
-            DDS_DomainParticipantQos_INITIALIZER;
-    struct DPSE_DiscoveryPluginProperty discovery_plugin_properties =
-            DPSE_DiscoveryPluginProperty_INITIALIZER;
-    RT_Registry_T *registry = NULL;
-    struct UDP_InterfaceFactoryProperty *udp_property = NULL;
-    DDS_Topic *topic = NULL;
-    DDS_Subscriber *subscriber = NULL;
-    DDS_DataReader *datareader = NULL;
-    struct DDS_DataReaderQos dr_qos = DDS_DataReaderQos_INITIALIZER;
-    struct DDS_PublicationBuiltinTopicData rem_publication_data =
-        DDS_PublicationBuiltinTopicData_INITIALIZER;
-    DDS_Entity *entity;
-
-    // Waitset related variables
-    DDS_WaitSet *waitset = NULL;
-    DDS_StatusCondition *dr_condition = NULL;
-    struct DDS_ConditionSeq active_conditions = DDS_SEQUENCE_INITIALIZER;
-    struct DDS_Duration_t wait_timeout = { 10, 0 }; /* 10 seconds */
-    int num_active_conditions; // number of active conditions
-
     DDS_ReturnCode_t retcode;
-    int i;
 
     // create the DomainParticipantFactory and registry so that we can make some 
     // changes to the default values
-    dpf = DDS_DomainParticipantFactory_get_instance();
-    registry = DDS_DomainParticipantFactory_get_registry(dpf);
+    DDS_DomainParticipantFactory *dpf = 
+            DDS_DomainParticipantFactory_get_instance();
+    RT_Registry_T *registry = DDS_DomainParticipantFactory_get_registry(dpf);
 
     // register writer history
     if (!RT_Registry_register(
@@ -137,6 +106,7 @@ int main(void)
         printf("ERROR: failed to unregister udp\n");
     }
 
+    struct UDP_InterfaceFactoryProperty *udp_property = NULL;
     udp_property = (struct UDP_InterfaceFactoryProperty *)
             malloc(sizeof(struct UDP_InterfaceFactoryProperty));
     if (udp_property == NULL) {
@@ -185,6 +155,8 @@ int main(void)
     } 
 
     // register the dpse (discovery) component
+    struct DPSE_DiscoveryPluginProperty discovery_plugin_properties =
+            DPSE_DiscoveryPluginProperty_INITIALIZER;    
     if (!RT_Registry_register(
             registry,
             "dpse",
@@ -195,15 +167,19 @@ int main(void)
         printf("ERROR: failed to register dpse\n");
     }
 
-    // Now that we've finsihed the changes to the registry, we will start 
+    // Now that we've finished the changes to the registry, we will start 
     // creating DDS entities. By setting autoenable_created_entities to false 
     // until all of the DDS entities are created, we limit all dynamic memory 
     // allocation to happen *before* the point where we enable everything.
+    struct DDS_DomainParticipantFactoryQos dpf_qos = 
+            DDS_DomainParticipantFactoryQos_INITIALIZER;    
     DDS_DomainParticipantFactory_get_qos(dpf, &dpf_qos);
     dpf_qos.entity_factory.autoenable_created_entities = DDS_BOOLEAN_FALSE;
     DDS_DomainParticipantFactory_set_qos(dpf, &dpf_qos);
 
     // configure discovery prior to creating our DomainParticipant
+    struct DDS_DomainParticipantQos dp_qos = 
+            DDS_DomainParticipantQos_INITIALIZER;    
     if(!RT_ComponentFactoryId_set_name(&dp_qos.discovery.discovery.name, "dpse")) {
         printf("ERROR: failed to set discovery plugin name\n");
     }
@@ -235,7 +211,7 @@ int main(void)
     strcpy(dp_qos.participant_name.name, k_PARTICIPANT03_NAME);
 
     // now the DomainParticipant can be created
-    dp = DDS_DomainParticipantFactory_create_participant(
+    DDS_DomainParticipant *dp = DDS_DomainParticipantFactory_create_participant(
             dpf, 
             domain_id,
             &dp_qos, 
@@ -255,7 +231,7 @@ int main(void)
     }
     // Create the Topic to which we will subscribe. Note that the name of the 
     // Topic is stored in topic_two_name, which was defined in the IDL 
-    topic = DDS_DomainParticipant_create_topic(
+    DDS_Topic *topic = DDS_DomainParticipant_create_topic(
             dp,
             topic_two_name, // this constant is defined in the *.idl file
             type_twoTypePlugin_get_default_type_name(),
@@ -274,7 +250,7 @@ int main(void)
     }
 
     // create the Subscriber
-    subscriber = DDS_DomainParticipant_create_subscriber(
+    DDS_Subscriber *subscriber = DDS_DomainParticipant_create_subscriber(
             dp,
             &DDS_SUBSCRIBER_QOS_DEFAULT,
             NULL, 
@@ -287,6 +263,7 @@ int main(void)
     // assign to our own DataReader here needs to be the same number the remote
     // DataWriter will configure for its remote peer. We are defining these IDs
     // and other constants in discovery_constants.h
+    struct DDS_DataReaderQos dr_qos = DDS_DataReaderQos_INITIALIZER;    
     dr_qos.protocol.rtps_object_id = k_OBJ_ID_PARTICIPANT03_DR01;
     dr_qos.reliability.kind = DDS_RELIABLE_RELIABILITY_QOS;
     dr_qos.resource_limits.max_instances = 2;
@@ -298,7 +275,7 @@ int main(void)
     dr_qos.history.depth = 16;
 
     // create the DataReader
-    datareader = DDS_Subscriber_create_datareader(
+    DDS_DataReader *datareader = DDS_Subscriber_create_datareader(
             subscriber,
             DDS_Topic_as_topicdescription(topic), 
             &dr_qos,
@@ -308,6 +285,7 @@ int main(void)
         printf("ERROR: datareader == NULL\n");
     }
 
+    struct DDS_ConditionSeq active_conditions = DDS_SEQUENCE_INITIALIZER;
     if (!DDS_ConditionSeq_initialize(&active_conditions)) {
         printf("cannot initialize active_conditions\n");
     }
@@ -316,13 +294,14 @@ int main(void)
     }
 
     // create the WaitSet
-    waitset = DDS_WaitSet_new();
+    DDS_WaitSet *waitset = DDS_WaitSet_new();
     if (waitset == NULL ) {
         printf("waitset == NULL\n");
     }
 
     // get and configure the DataReader's status condition
-    dr_condition = DDS_Entity_get_statuscondition(DDS_DataReader_as_entity(datareader));
+    DDS_StatusCondition *dr_condition = 
+            DDS_Entity_get_statuscondition(DDS_DataReader_as_entity(datareader));
     retcode = DDS_StatusCondition_set_enabled_statuses(
             dr_condition,
             DDS_DATA_AVAILABLE_STATUS | DDS_SUBSCRIPTION_MATCHED_STATUS);
@@ -337,10 +316,12 @@ int main(void)
         printf("Cannot attach DR condition to waitset\n");
     }
 
-    // When we use DPSE discovery we must mannually setup information about any 
+    // When we use DPSE discovery we must manually setup information about any 
     // DataWriters we are expecting to discover. This information includes a 
     // unique object ID for the remote peer (we are defining this in 
     // discovery_constants.h), as well as its Topic, type, and QoS. 
+    struct DDS_PublicationBuiltinTopicData rem_publication_data =
+            DDS_PublicationBuiltinTopicData_INITIALIZER;    
     rem_publication_data.key.value[DDS_BUILTIN_TOPIC_KEY_OBJECT_ID] = 
             k_OBJ_ID_PARTICIPANT01_DW02;
     rem_publication_data.topic_name = DDS_String_dup(topic_two_name);
@@ -361,14 +342,16 @@ int main(void)
         printf("ERROR: failed to assert remote publication\n");
     }
 
-    // Finaly, now that all of the entities are created, we can enable them all
-    entity = DDS_DomainParticipant_as_entity(dp);
-    retcode = DDS_Entity_enable(entity);
+    // Finally, now that all of the entities are created, we can enable them
+    retcode = DDS_Entity_enable(DDS_DomainParticipant_as_entity(dp));
     if(retcode != DDS_RETCODE_OK) {
         printf("ERROR: failed to enable entity\n");
     }
 
-    printf("Waiting for samples to arrive, press Ctrl-C to exit\n"); 
+    struct DDS_Duration_t wait_timeout = { 10, 0 }; // 10 seconds 
+    int num_active_conditions; // number of active conditions    
+
+    printf("INFO: Waiting for samples to arrive, press Ctrl-C to exit\n"); 
     while (1) {
 
         retcode = DDS_RETCODE_ERROR;
@@ -383,7 +366,7 @@ int main(void)
 
         // get the number of active conditions, then loop through them
         num_active_conditions = DDS_ConditionSeq_get_length(&active_conditions);
-        for (i = 0; i < num_active_conditions; ++i) {
+        for (int i = 0; i < num_active_conditions; ++i) {
             
             // Get the current condition and compare it with any Status
             // Conditions previously defined. 

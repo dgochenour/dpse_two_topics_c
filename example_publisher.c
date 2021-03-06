@@ -16,41 +16,15 @@
 #include "examplePlugin.h"
 #include "exampleSupport.h"
 
-// DPSE Discovery-related constants defined in this header
+// DPSE Discovery-related constants and user-specific constants aredefined 
+// in these headers
 #include "discovery_constants.h"
+#include "user_config.h"
 
 
 int main(void)
 {
-    // user-configurable values
-    char *peer = "127.0.0.1";
-    char *loopback_name = "Loopback Pseudo-Interface 1";
-    char *eth_nic_name = "Wireless LAN adapter Wi-Fi";
-    int domain_id = 100;
-
-    DDS_DomainParticipantFactory *dpf = NULL;
-    struct DDS_DomainParticipantFactoryQos dpf_qos = 
-            DDS_DomainParticipantFactoryQos_INITIALIZER;
-    DDS_DomainParticipant *dp = NULL;
-    struct DDS_DomainParticipantQos dp_qos = 
-            DDS_DomainParticipantQos_INITIALIZER;
-    struct DPSE_DiscoveryPluginProperty discovery_plugin_properties =
-            DPSE_DiscoveryPluginProperty_INITIALIZER;
-    RT_Registry_T *registry = NULL;
-    struct UDP_InterfaceFactoryProperty *udp_property = NULL;
-    DDS_Publisher *publisher = NULL;
-
-    // Related to topic_one
-    DDS_Topic *topic_one = NULL;
-    DDS_DataWriter *dw_one = NULL;
-    type_oneDataWriter *narrowed_dw_one = NULL;
-    type_one *type_one_sample = NULL;
-
-    // Related to topic_two
-    DDS_Topic *topic_two = NULL;
-    DDS_DataWriter *dw_two = NULL;
-    type_twoDataWriter *narrowed_dw_two = NULL;
-    type_two *type_two_sample = NULL;
+    DDS_ReturnCode_t retcode;
 
     // These structs can be reused when setting up both of our DataWriters, as 
     // well as the remote subscriptions we are going to assert.
@@ -58,15 +32,11 @@ int main(void)
     struct DDS_SubscriptionBuiltinTopicData rem_subscription_data =
             DDS_SubscriptionBuiltinTopicData_INITIALIZER;
 
-    DDS_Entity *entity = NULL;
-    int sample_count = 0;
-    DDS_ReturnCode_t retcode;
-    DDS_Boolean success = DDS_BOOLEAN_FALSE;
-
     // create the DomainParticipantFactory and registry so that we can make some 
     // changes to the default values
-    dpf = DDS_DomainParticipantFactory_get_instance();
-    registry = DDS_DomainParticipantFactory_get_registry(dpf);
+    DDS_DomainParticipantFactory *dpf = 
+            DDS_DomainParticipantFactory_get_instance();
+    RT_Registry_T *registry = DDS_DomainParticipantFactory_get_registry(dpf);
 
     // register writer history
     if (!RT_Registry_register(
@@ -90,7 +60,7 @@ int main(void)
     }
 
     // Set up the UDP transport's allowed interfaces. To do this we:
-    // (1) unregister the UDP trasport
+    // (1) unregister the UDP transport
     // (2) name the allowed interfaces
     // (3) re-register the transport
     if(!RT_Registry_unregister(
@@ -102,6 +72,7 @@ int main(void)
         printf("ERROR: failed to unregister udp\n");
     }
 
+    struct UDP_InterfaceFactoryProperty *udp_property = NULL;
     udp_property = (struct UDP_InterfaceFactoryProperty *)
             malloc(sizeof(struct UDP_InterfaceFactoryProperty));
     if (udp_property == NULL) {
@@ -150,6 +121,8 @@ int main(void)
     } 
 
     // register the dpse (discovery) component
+    struct DPSE_DiscoveryPluginProperty discovery_plugin_properties =
+            DPSE_DiscoveryPluginProperty_INITIALIZER;
     if (!RT_Registry_register(
             registry,
             "dpse",
@@ -160,15 +133,19 @@ int main(void)
         printf("ERROR: failed to register dpse\n");
     }
 
-    // Now that we've finsihed the changes to the registry, we will start 
+    // Now that we've finished the changes to the registry, we will start 
     // creating DDS entities. By setting autoenable_created_entities to false 
     // until all of the DDS entities are created, we limit all dynamic memory 
     // allocation to happen *before* the point where we enable everything.
+    struct DDS_DomainParticipantFactoryQos dpf_qos = 
+            DDS_DomainParticipantFactoryQos_INITIALIZER;
     DDS_DomainParticipantFactory_get_qos(dpf, &dpf_qos);
     dpf_qos.entity_factory.autoenable_created_entities = DDS_BOOLEAN_FALSE;
     DDS_DomainParticipantFactory_set_qos(dpf, &dpf_qos);
 
     // configure discovery prior to creating our DomainParticipant
+    struct DDS_DomainParticipantQos dp_qos = 
+            DDS_DomainParticipantQos_INITIALIZER;    
     if(!RT_ComponentFactoryId_set_name(&dp_qos.discovery.discovery.name, "dpse")) {
         printf("ERROR: failed to set discovery plugin name\n");
     }
@@ -184,8 +161,8 @@ int main(void)
     // configure the DomainParticipant's resource limits... these are just 
     // examples, if there are more remote or local endpoints these values would
     // need to be increased
-    dp_qos.resource_limits.max_destination_ports = 4;
-    dp_qos.resource_limits.max_receive_ports = 4;
+    dp_qos.resource_limits.max_destination_ports = 8;
+    dp_qos.resource_limits.max_receive_ports = 8;
     dp_qos.resource_limits.local_topic_allocation = 2;
     dp_qos.resource_limits.local_type_allocation = 2;
     dp_qos.resource_limits.local_reader_allocation = 1;
@@ -200,7 +177,7 @@ int main(void)
     strcpy(dp_qos.participant_name.name, k_PARTICIPANT01_NAME);
 
     // now the DomainParticipant can be created
-    dp = DDS_DomainParticipantFactory_create_participant(
+    DDS_DomainParticipant *dp = DDS_DomainParticipantFactory_create_participant(
             dpf, 
             domain_id,
             &dp_qos, 
@@ -230,7 +207,7 @@ int main(void)
     // Create both of the Topics that this publishing application will use.
     // Note that the names of the Topics are stored in const strings defined 
     // in the IDL 
-    topic_one = DDS_DomainParticipant_create_topic(
+    DDS_Topic *topic_one = DDS_DomainParticipant_create_topic(
             dp,
             topic_one_name, // this constant is defined in the *.idl file
             type_oneTypePlugin_get_default_type_name(),
@@ -240,7 +217,7 @@ int main(void)
     if(topic_one == NULL) {
         printf("ERROR: topic_one == NULL\n");
     }
-    topic_two = DDS_DomainParticipant_create_topic(
+    DDS_Topic *topic_two = DDS_DomainParticipant_create_topic(
             dp,
             topic_two_name, // this constant is defined in the *.idl file
             type_twoTypePlugin_get_default_type_name(),
@@ -263,7 +240,7 @@ int main(void)
     }
 
     // create the Publisher
-    publisher = DDS_DomainParticipant_create_publisher(
+    DDS_Publisher *publisher = DDS_DomainParticipant_create_publisher(
             dp,
             &DDS_PUBLISHER_QOS_DEFAULT,
             NULL,
@@ -288,7 +265,7 @@ int main(void)
     dw_qos.protocol.rtps_reliable_writer.heartbeat_period.nanosec = 250000000;
 
     // now create dw_one
-    dw_one = DDS_Publisher_create_datawriter(
+    DDS_DataWriter *dw_one = DDS_Publisher_create_datawriter(
             publisher, 
             topic_one, 
             &dw_qos,
@@ -300,10 +277,10 @@ int main(void)
 
     // A DDS_DataWriter is not type-specific, thus we need to cast, or "narrow"
     // the DataWriter before we use it to write our samples
-    narrowed_dw_one = type_oneDataWriter_narrow(dw_one);
+    type_oneDataWriter *narrowed_dw_one = type_oneDataWriter_narrow(dw_one);
 
     // create the data sample that we will write
-    type_one_sample = type_one_create();
+    type_one *type_one_sample = type_one_create();
     if(type_one_sample == NULL) {
         printf("ERROR: failed type_one_create\n");
     }
@@ -323,7 +300,7 @@ int main(void)
     dw_qos.protocol.rtps_reliable_writer.heartbeat_period.nanosec = 250000000;
 
     // now create dw_two and narrowed_dw_two
-    dw_two = DDS_Publisher_create_datawriter(
+    DDS_DataWriter *dw_two = DDS_Publisher_create_datawriter(
             publisher, 
             topic_two, 
             &dw_qos,
@@ -332,10 +309,10 @@ int main(void)
     if(dw_two == NULL) {
         printf("ERROR: dw_one == NULL\n");
     }
-    narrowed_dw_two = type_twoDataWriter_narrow(dw_two);
+    type_twoDataWriter *narrowed_dw_two = type_twoDataWriter_narrow(dw_two);
 
     // create the data sample that we will write for topic_two
-    type_two_sample = type_two_create();
+    type_two *type_two_sample = type_two_create();
     if(type_two_sample == NULL) {
         printf("ERROR: failed type_two_create\n");
     }
@@ -386,13 +363,13 @@ int main(void)
         printf("ERROR: failed to assert remote publication\n");
     }    
 
-    // Finaly, now that all of the entities are created, we can enable them all
-    entity = DDS_DomainParticipant_as_entity(dp);
-    retcode = DDS_Entity_enable(entity);
+    // Finally, now that all of the entities are created, we can enable them all
+    retcode = DDS_Entity_enable(DDS_DomainParticipant_as_entity(dp));
     if(retcode != DDS_RETCODE_OK) {
         printf("ERROR: failed to enable entity\n");
     }
 
+    int sample_count = 0;
     while (1) {
         
         // add some arbitrary data to the samples then write them...
