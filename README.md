@@ -1,8 +1,6 @@
 # Using DPSE With Mixed Connext Micro and Professional Applications
 
-This example contains a Connext Micro-based publishing application and two subscribing applications: one using Micro, and one based on Connext Professional. The following product versions were used:
-- Connext Micro 2.4.14
-- Connext Professional 6.1.0
+This example contains a Connext Micro-based publishing application and two subscribing applications. Connext Micro 2.4.14 was used.
 
 for a simple IDL-defined data type. "example_subscriber_1" uses a listener to be
 notified of events, and "example_subscriber_2" uses a WaitSet.
